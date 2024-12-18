@@ -1,0 +1,268 @@
+{
+    "reference_data_path": "data/reference/Credit_score_cleaned_data_Aug.csv",
+    "local_reference_path": "Credit_score_cleaned_data_Aug.csv",
+    "predictions_folder": "data/predictions/",
+    "target": "Credit_Score",
+    "drop_columns": [
+        "Customer_ID"
+    ],
+    "time_unit_column": "Time",
+    "feature_importance_methods": [
+        "random_forest"
+    ],
+    "available_feature_importance_methods": [
+        "random_forest",
+        "permutation",
+        "mutual_info"
+    ],
+    "monitoring": {
+        "drift_threshold": 0.7,
+        "sns_topic_arn": "arn:aws:sns:us-east-1:864899838628:monitor"
+    },
+    "drift_tests": {
+        "default": {
+            "numerical": [
+                "ks"
+            ],
+            "categorical": [
+                "chisquare"
+            ],
+            "binary": [
+                "z"
+            ]
+        },
+        "columns": {
+            "Age": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Occupation": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Annual_Income": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Monthly_Inhand_Salary": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Num_Bank_Accounts": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Num_Credit_Card": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Interest_Rate": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Num_of_Loan": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Delay_from_due_date": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Num_of_Delayed_Payment": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Changed_Credit_Limit": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Num_Credit_Inquiries": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Credit_Mix": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Outstanding_Debt": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Credit_Utilization_Ratio": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Credit_History_Age": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Payment_of_Min_Amount": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Total_EMI_per_month": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Amount_invested_monthly": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Payment_Behaviour": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Monthly_Balance": {
+                "type": "numerical",
+                "tests": [
+                    "ks"
+                ]
+            },
+            "Last_Loan_9": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_8": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_7": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_6": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_5": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_4": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_3": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_2": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            },
+            "Last_Loan_1": {
+                "type": "categorical",
+                "tests": [
+                    "chisquare"
+                ]
+            }
+        },
+        "available_drift_tests": {
+            "numerical": [
+                "ks",
+                "wasserstein",
+                "anderson",
+                "psi",
+                "kl_div",
+                "t_test",
+                "empirical_mmd",
+                "cramer_von_mises"
+            ],
+            "categorical": [
+                "chisquare",
+                "psi",
+                "jensenshannon",
+                "fisher_exact",
+                "g_test",
+                "hellinger",
+                "TVD",
+                "kl_div"
+            ],
+            "binary": [
+                "z",
+                "fisher_exact"
+            ]
+        },
+        "drift_thresholds": {
+            "dataset_drift_share": 0.1,
+            "test_thresholds": {
+                "ks": 0.05,
+                "wasserstein": 0.1,
+                "anderson": 0.05,
+                "psi": 0.2,
+                "kl_div": 0.2,
+                "jensenshannon": 0.1,
+                "chisquare": 0.05,
+                "fisher_exact": 0.05,
+                "g_test": 0.05,
+                "hellinger": 0.1,
+                "TVD": 0.1,
+                "mannw": 0.05,
+                "ed": 0.1,
+                "es": 0.05,
+                "t_test": 0.05,
+                "empirical_mmd": 0.1,
+                "cramer_von_mises": 0.05,
+                "z": 0.05
+            }
+        }
+    },
+    "results_json_path": "analysis_results.json",
+    "output_csv_path": "feature_analysis.csv"
+}
