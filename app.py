@@ -17,6 +17,7 @@ import boto3
 import io
 from concurrent.futures import ThreadPoolExecutor
 
+
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
@@ -77,7 +78,6 @@ def create_stat_tests(config, numerical_features, categorical_features, binary_f
             # Use the test specified for this column
             per_column_stattest[col] = column_tests[col]['tests'][0]
         else:
-            # No specific test defined for this column
             logger.warning(f"No specific test defined for column '{col}'. Skipping.")
 
     return per_column_stattest, drift_thresholds
@@ -100,7 +100,6 @@ def run_drift_tests(test_suite, reference, current, column_mapping):
     return test_suite
 
 def calculate_feature_importance(reference_data: pd.DataFrame, current_data: pd.DataFrame, config: dict) -> dict:
-    """Calculate feature importance scores using the configured method with optimized parameters"""
     try:
         logger.info("Starting feature importance calculation...")
         feature_importance = {}
@@ -130,7 +129,6 @@ def calculate_feature_importance(reference_data: pd.DataFrame, current_data: pd.
                 X = X.iloc[sample_indices]
                 y = y.iloc[sample_indices]
 
-            # Process features in parallel
             def process_column(column):
                 try:
                     column_type = config['drift_tests']['columns'][column]['type']
@@ -155,7 +153,6 @@ def calculate_feature_importance(reference_data: pd.DataFrame, current_data: pd.
                 logger.error("No valid features remaining after processing")
                 return {}
 
-            # Train a Random Forest
             from sklearn.ensemble import RandomForestClassifier
             rf = RandomForestClassifier(
                 n_estimators=50,
@@ -167,7 +164,6 @@ def calculate_feature_importance(reference_data: pd.DataFrame, current_data: pd.
             X = X.astype(np.float32)
             rf.fit(X, y)
 
-            # Get and normalize importance scores
             importances = rf.feature_importances_
             if importances.max() > 0:
                 importances = importances / importances.max()
@@ -219,7 +215,6 @@ def export_results_to_csv(test_suite, reference, current, column_mapping, numeri
     data = []
     suite_dict = test_suite.as_dict()
     
-    # Extract month from current prediction file name
     current_month = os.path.basename(current_file_name).split('_')[-1].split('.')[0]
     logger.info(f"Extracted month from current file: {current_month}")
     
@@ -294,56 +289,115 @@ def read_s3_csv(bucket, key):
     try:
         response = s3.get_object(Bucket=bucket, Key=key)
         return pd.read_csv(io.BytesIO(response['Body'].read()))
+    except s3.exceptions.NoSuchKey:
+        logger.info(f"No existing results file found at {key}. Will create new file.")
+        return None
     except Exception as e:
         logger.error(f"Error reading file {key} from bucket {bucket}: {str(e)}")
         raise
 
-def write_results_to_s3(df, bucket, key):
+def write_results_to_s3(df, bucket, key, mode='append'):
     try:
+        # If mode is append, try to read existing file
+        if mode == 'append':
+            existing_df = read_s3_csv(bucket, key)
+            if existing_df is not None:
+                df = pd.concat([existing_df, df], ignore_index=True)
+                logger.info(f"Appended {len(df) - len(existing_df)} new rows to existing results")
+            else:
+                logger.info("Creating new results file")
+
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False)
+        
+        metadata = {
+            'ContentType': 'text/csv',
+            'LastUpdated': datetime.now().isoformat()
+        }
+        
         s3.put_object(
             Bucket=bucket,
             Key=key,
-            Body=csv_buffer.getvalue()
+            Body=csv_buffer.getvalue(),
+            Metadata=metadata
         )
+        logger.info(f"Successfully wrote {len(df)} rows to s3://{bucket}/{key}")
     except Exception as e:
         logger.error(f"Error writing results to S3: {str(e)}")
         raise
 
 def send_sns_notification(topic_arn, message):
     try:
-        sns.publish(
+        logger.info(f"Attempting to send SNS notification to {topic_arn}")
+        response = sns.publish(
             TopicArn=topic_arn,
-            Message=message
+            Message=message,
+            Subject="Data Drift Analysis Results",
+            MessageStructure='raw'
         )
+        logger.info(f"Successfully sent SNS notification: {response['MessageId']}")
+        return response
     except Exception as e:
-        logger.error(f"Error sending SNS notification: {str(e)}")
-        raise
+        logger.warning(f"Failed to send SNS notification: {str(e)}")
+        return None
+
+def create_email_ascii_table(headers, rows):
+    """Creates a plain ASCII table, with column widths based on the longest data entry,
+    ensuring that headers also fit."""
+    
+    # Initialize widths based on zero length
+    widths = [2] * len(headers)
+    
+    # First, determine widths from the data rows
+    for row in rows:
+        for i, cell in enumerate(row):
+            cell_length = len(str(cell))
+            if cell_length > widths[i]:
+                widths[i] = cell_length
+
+    # Ensure the header fits if it's longer than any cell in that column
+    for i, header in enumerate(headers):
+        header_length = len(header)
+        if header_length > widths[i]:
+            widths[i] = header_length
+
+    # Build the header line
+    header_line = " | ".join(header.ljust(widths[i]) for i, header in enumerate(headers))
+    separator_line = "-" * len(header_line)
+
+    # Build the data lines
+    data_lines = [
+        " | ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row))
+        for row in rows
+    ]
+
+    return "\n".join([header_line, separator_line] + data_lines)
+
+
 
 def lambda_handler(event, context):
     try:
-        BUCKET = 'monitorsnsdemo-manuel-2024'
+        BUCKET = 'monitorsnsdemo-manuel-2025'
         CONFIG_PATH = 'config/config.json'
-        
+
         # Load config and reference data in parallel
         with ThreadPoolExecutor() as executor:
             config_future = executor.submit(load_config, BUCKET, CONFIG_PATH)
             config = config_future.result()
-            
+
             reference_future = executor.submit(read_s3_csv, BUCKET, config['reference_data_path'])
-            
+
             # Get latest prediction file
             predictions_prefix = config['predictions_folder']
             response = s3.list_objects_v2(Bucket=BUCKET, Prefix=predictions_prefix)
             latest_file = sorted(response['Contents'], key=lambda x: x['LastModified'])[-1]
             current_future = executor.submit(read_s3_csv, BUCKET, latest_file['Key'])
-            
+
             reference = reference_future.result()
             current = current_future.result()
 
         numerical_features, categorical_features, binary_features = map_columns(reference, config['target'])
-        
+
         drop_columns = set(config.get('drop_columns', []))
         reference = reference.drop(columns=drop_columns, errors='ignore')
         current = current.drop(columns=drop_columns, errors='ignore')
@@ -363,59 +417,51 @@ def lambda_handler(event, context):
 
         target = config.get('target', None)
         reference, current = prepare_data(reference, current, drop_columns, target)
-        
+
         numerical_features, categorical_features, binary_features = map_columns(reference, target)
-        
+
         per_column_stattest, drift_thresholds = create_stat_tests(config, numerical_features, categorical_features, binary_features)
-        
+
         column_mapping = ColumnMapping()
         column_mapping.numerical_features = numerical_features
         column_mapping.categorical_features = categorical_features
         column_mapping.target = target
-        
+
         test_suite = setup_test_suite(per_column_stattest, drift_thresholds)
         test_suite = run_drift_tests(test_suite, reference, current, column_mapping)
-        
+
         feature_importance_methods = config.get('feature_importance_methods', [])
-        
+
         results_key = 'results/feature_analysis.csv'
         new_results = export_results_to_csv(
-            test_suite, 
-            reference, 
-            current, 
-            column_mapping, 
-            numerical_features, 
-            categorical_features, 
-            binary_features, 
-            feature_importance_methods, 
+            test_suite,
+            reference,
+            current,
+            column_mapping,
+            numerical_features,
+            categorical_features,
+            binary_features,
+            feature_importance_methods,
             results_key,
             config,
             latest_file['Key']
         )
-        
-        # Combine with existing results if available
-        try:
-            existing_results = read_s3_csv(BUCKET, results_key)
-            df = pd.concat([existing_results, new_results], ignore_index=True)
-        except Exception as e:
-            logger.info(f"No existing results file found or error reading it: {str(e)}")
-            df = new_results
-            
-        # Write combined results to S3
-        write_results_to_s3(df, BUCKET, results_key)
-        
-        # Prepare detailed and cleaner SNS notification message
-        drifted_columns = df[df['Drift_Test_Drifted'] == 'Drift Detected']['Feature'].unique().tolist()
-        no_drift_columns = df[df['Drift_Test_Drifted'] == 'No Drift']['Feature'].unique().tolist()
 
-        total_columns_analyzed = len(df['Feature'].unique())
+        # Write results to S3
+        write_results_to_s3(new_results, BUCKET, results_key, mode='append')
+
+        # Prepare summary information
+        drifted_columns = new_results[new_results['Drift_Test_Drifted'] == 'Drift Detected']['Feature'].unique().tolist()
+        no_drift_columns = new_results[new_results['Drift_Test_Drifted'] == 'No Drift']['Feature'].unique().tolist()
+
+        total_columns_analyzed = len(new_results['Feature'].unique())
         total_drifted = len(drifted_columns)
         total_no_drift = len(no_drift_columns)
 
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         dataset_name = latest_file['Key']
 
-        # Create a cleaner, more informative message
+        # Build the message lines in ASCII format
         message_lines = [
             "Data Drift Analysis Results",
             "===========================",
@@ -424,47 +470,73 @@ def lambda_handler(event, context):
             f"Total Columns Analyzed: {total_columns_analyzed}",
             f"Columns with Detected Drift: {total_drifted}",
             f"Columns with No Drift: {total_no_drift}",
-            "",
-            "Drifted Columns:",
-            "----------------"
+            ""
         ]
 
+        # Drifted columns table
         if total_drifted > 0:
+            headers = ['Feature', 'Test Used', 'Drift Score', 'Threshold', 'FI Score']
+            rows = []
             for col in drifted_columns:
-                # Get some details for each drifted column (optional)
-                # For example, last drift test result:
-                detail_row = df[(df['Feature'] == col) & (df['Drift_Test_Drifted'] == 'Drift Detected')].iloc[-1]
-                test_used = detail_row['Evidently_Test_Used']
-                p_val = detail_row['Drift_Test_P_Value']
-                threshold = detail_row['Drift_Test_Threshold']
-                fi_score = detail_row['Feature_Importance_Score']
+                detail_row = new_results[(new_results['Feature'] == col) &
+                                         (new_results['Drift_Test_Drifted'] == 'Drift Detected')].iloc[-1]
 
-                message_lines.append(
-                    f"- {col}\n   Test Used: {test_used}, P-Value: {p_val}, Threshold: {threshold}, Feature Importance: {fi_score}"
-                )
+                drift_score = f"{float(detail_row['Drift_Test_Score']):.4f}"
+                threshold = f"{float(detail_row['Drift_Test_Threshold']):.4f}"
+                fi_score = (f"{float(detail_row['Feature_Importance_Score']):.4f}"
+                            if detail_row['Feature_Importance_Score'] != 'N/A' else 'N/A')
+
+                rows.append([col, detail_row['Evidently_Test_Used'], drift_score, threshold, fi_score])
+
+            message_lines.append("Drifted Columns:")
+            ascii_table = create_email_ascii_table(headers, rows)
+            message_lines.append(ascii_table)
+            message_lines.append("")
         else:
-            message_lines.append("None")
+            message_lines.append("No Drifted Columns Found")
+            message_lines.append("")
 
-        message_lines.append("")
-        message_lines.append("Non-Drifted Columns:")
-        message_lines.append("---------------------")
+        # Non-drifted columns table
         if total_no_drift > 0:
-            # Just list them if user wants. Or show their tests:
-            for col in no_drift_columns:
-                message_lines.append(f"- {col}")
+            headers = ['Feature']
+            rows = [[col] for col in no_drift_columns]
+            message_lines.append("Non-Drifted Columns:")
+            ascii_table = create_email_ascii_table(headers, rows)
+            message_lines.append(ascii_table)
+            message_lines.append("")
         else:
-            message_lines.append("None")
+            message_lines.append("No Non-Drifted Columns Found")
+            message_lines.append("")
 
-        # Final message
-        message = "\n".join(message_lines)
+        final_text = "\n".join(message_lines)
 
-        send_sns_notification(config['monitoring']['sns_topic_arn'], message)
+        # Add first run indication if this is the first analysis
+        try:
+            s3.head_object(Bucket=BUCKET, Key=results_key)
+            is_first_run = False
+        except s3.exceptions.ClientError:
+            is_first_run = True
+            final_text = "FIRST ANALYSIS RUN\n" + "=" * 20 + "\n\n" + final_text
+
+        # Create a full HTML page
+        # We'll just wrap our ASCII output in <html><body><pre>...</pre></body></html>
+        html_message = f"""<html>
+<head><title>Data Drift Analysis Results</title></head>
+<body style="font-family: monospace; white-space: pre;">
+{final_text}
+</body>
+</html>"""
+
+
+        # Send HTML as raw text. Note that SNS publish with 'MessageStructure'='raw' will send as text.
+        # If you have a mechanism to send actual HTML emails, you'd adapt here. For SNS, it's plain text.
+        send_sns_notification(config['monitoring']['sns_topic_arn'], html_message)
 
         return {
             'statusCode': 200,
             'body': json.dumps('Analysis completed successfully')
         }
-        
+
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}")
         return {

@@ -17,7 +17,7 @@
     ],
     "monitoring": {
         "drift_threshold": 0.7,
-        "sns_topic_arn": "arn:aws:sns:us-east-1:864899838628:monitor"
+        "sns_topic_arn": "arn:aws:sns:us-east-1:345594570065:firstsns"
     },
     "drift_tests": {
         "default": {
